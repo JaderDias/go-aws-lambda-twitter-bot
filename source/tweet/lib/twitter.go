@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	twitter "github.com/g8rswimmer/go-twitter/v2"
 	"golang.org/x/oauth2"
 	"log"
@@ -19,7 +21,8 @@ type ConfigAndToken struct {
 type retweet struct {
 	twtclient      *twitter.Client
 	configAndToken *ConfigAndToken
-	projectID      string
+	context        context.Context
+	s3Client       *s3.Client
 }
 
 // Add implements the go-twitter Authorization interface
@@ -39,7 +42,7 @@ func (r retweet) Add(req *http.Request) {
 			log.Fatalf("Couldn't serialize token: %v", err)
 		}
 
-		err = UpdateSecret(r.projectID, "twitter_oauth", twitterOAuthJson)
+		_, err = PutObject(r.context, r.s3Client, "my-bucket-included-giraffe", "twitter_secrets", twitterOAuthJson)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -48,8 +51,8 @@ func (r retweet) Add(req *http.Request) {
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
 }
 
-func getConfigAndToken(projectID string) (*ConfigAndToken, error) {
-	configAndTokenJson, err := AccessSecret(projectID, "twitter_oauth")
+func getConfigAndToken(ctx context.Context, s3Client *s3.Client) (*ConfigAndToken, error) {
+	configAndTokenJson, err := GetObject(ctx, s3Client, "my-bucket-included-giraffe", "twitter_secrets")
 	if err != nil {
 		return nil, err
 	}
@@ -64,15 +67,17 @@ func getConfigAndToken(projectID string) (*ConfigAndToken, error) {
 	return configAndToken, nil
 }
 
-func newClient(projectID string) *retweet {
+func newClient(ctx context.Context, cfg aws.Config) *retweet {
+	s3Client := s3.NewFromConfig(cfg)
 
-	configAndToken, err := getConfigAndToken(projectID)
+	configAndToken, err := getConfigAndToken(ctx, s3Client)
 	if err != nil {
 		log.Fatal(err)
 	}
 	retweet := &retweet{
 		configAndToken: configAndToken,
-		projectID:      projectID,
+		s3Client:       s3Client,
+		context:        ctx,
 	}
 
 	twtclient := &twitter.Client{
@@ -86,9 +91,9 @@ func newClient(projectID string) *retweet {
 	return retweet
 }
 
-func Retweet(projectID string) {
+func Retweet(ctx context.Context, cfg aws.Config) {
 
-	client := newClient(projectID)
+	client := newClient(ctx, cfg)
 	query := "powerpoint"
 
 	opts := twitter.TweetRecentSearchOpts{

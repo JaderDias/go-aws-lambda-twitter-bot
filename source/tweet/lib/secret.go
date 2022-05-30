@@ -1,58 +1,41 @@
 package tweet
 
 import (
+	"bytes"
 	"context"
-	"fmt"
-	"log"
-
-	secretmanager "cloud.google.com/go/secretmanager/apiv1"
-	secretmanagerpb "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"io"
 )
 
-func AccessSecret(projectID, name string) ([]byte, error) {
-	ctx := context.Background()
-	// Create the client.
-	client, err := secretmanager.NewClient(ctx)
+func GetObject(ctx context.Context, s3Client *s3.Client, bucketname, key string) ([]byte, error) {
+	resp, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &bucketname,
+		Key:    &key,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create secretmanager client: %v", err)
-	}
-	defer client.Close()
-
-	// Build the request.
-	name = fmt.Sprintf("projects/%s/secrets/%s/versions/latest", projectID, name)
-	log.Println("accessing secret", name)
-	req := &secretmanagerpb.AccessSecretVersionRequest{
-		Name: name,
+		return nil, err
 	}
 
-	// Call the API.
-	result, err := client.AccessSecretVersion(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to access secret version: %v", err)
+	buffer := make([]byte, resp.ContentLength)
+	defer resp.Body.Close()
+	var bbuffer bytes.Buffer
+	for {
+		num, rerr := resp.Body.Read(buffer)
+		if num > 0 {
+			bbuffer.Write(buffer[:num])
+		} else if rerr == io.EOF || rerr != nil {
+			break
+		}
 	}
-
-	return result.Payload.Data, nil
+	return bbuffer.Bytes(), nil
 }
 
-func UpdateSecret(projectID, secretId string, payload []byte) error {
-	ctx := context.Background()
-	// Create the client.
-	client, err := secretmanager.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create secretmanager client: %v", err)
-	}
-	defer client.Close()
-
-	parent := fmt.Sprintf("projects/%s/secrets/%s", projectID, secretId)
-	req := &secretmanagerpb.AddSecretVersionRequest{
-		Parent: parent,
-		Payload: &secretmanagerpb.SecretPayload{
-			Data: payload,
-		},
-	}
-	_, err = client.AddSecretVersion(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to add secret version: %v", err)
-	}
-	return nil
+func PutObject(ctx context.Context, s3Client *s3.Client, bucketname, key string, payload []byte) (*s3.PutObjectOutput, error) {
+	reader := bytes.NewReader(payload)
+	return s3Client.PutObject(ctx,
+		&s3.PutObjectInput{
+			Body:   reader,
+			Bucket: &bucketname,
+			Key:    &key,
+		})
 }

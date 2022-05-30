@@ -8,5 +8,5 @@ variable "aws_region" {
 }
 
 variable "twitter_secrets" {
-  
+
 }

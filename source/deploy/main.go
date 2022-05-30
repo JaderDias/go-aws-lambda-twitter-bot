@@ -54,7 +54,12 @@ func main() {
 		"twitter_secrets",
 		"outfile",
 	).Output()
-	if err != nil {
+	if err == nil {
+		twitterOAuthJson, err = exec.Command(
+			"cat",
+			"outfile",
+		).Output()
+	} else {
 		var clientId string
 		var clientSecret string
 		var redirectURL string
