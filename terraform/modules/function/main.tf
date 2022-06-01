@@ -19,10 +19,7 @@ resource "aws_iam_policy" "lambda_policy" {
         "s3:PutObject"
       ],
       "Effect": "Allow",
-      "Resource": [
-        "${var.bucket_arn}",
-        "${var.bucket_arn}/*"
-        ]
+      "Resource": "${var.bucket_arn}/*"
     },
     {
       "Action": [
